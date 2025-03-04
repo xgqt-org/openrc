@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 
 #include "queue.h"
@@ -446,4 +447,28 @@ rc_conf_value(const char *setting)
 	}
 
 	return rc_config_value(rc_conf, setting);
+}
+
+bool rc_export_variable(const char *service, const char *name, const char *value) {
+	int dirfd = openat(rc_dirfd(RC_DIR_ENVIRONMENT), service, O_RDONLY | O_DIRECTORY);
+	FILE *envfile;
+
+	if (dirfd == -1)
+		return false;
+
+	if (flock(dirfd, LOCK_EX) == -1) {
+		close(dirfd);
+		return false;
+	}
+
+	if (!value) {
+		unlinkat(dirfd, name, 0);
+		return true;
+	}
+
+	envfile = do_fopenat(dirfd, name, O_WRONLY | O_TRUNC | O_CREAT);
+	fputs(value, envfile);
+	fclose(envfile);
+
+	return true;
 }
