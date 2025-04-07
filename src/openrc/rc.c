@@ -50,12 +50,13 @@
 #include "helpers.h"
 
 const char *extraopts = NULL;
-const char getoptstring[] = "a:no:s:S" getoptstring_COMMON;
+const char getoptstring[] = "e:a:no:s:S" getoptstring_COMMON;
 const struct option longopts[] = {
 	{ "no-stop", 0, NULL, 'n' },
 	{ "override",    1, NULL, 'o' },
 	{ "service",     1, NULL, 's' },
 	{ "sys",         0, NULL, 'S' },
+	{ "export",      1, NULL, 'e' },
 	longopts_COMMON
 };
 const char * const longopts_help[] = {
@@ -63,8 +64,10 @@ const char * const longopts_help[] = {
 	"override the next runlevel to change into\nwhen leaving single user or boot runlevels",
 	"runs the service specified with the rest\nof the arguments",
 	"output the RC system type, if any",
+	"exports the listed variable to the runlevel's activation environment",
 	longopts_help_COMMON
 };
+
 const char *usagestring = ""
 	"Usage: openrc [options] [<runlevel>]";
 
@@ -745,11 +748,10 @@ int main(int argc, char **argv)
 	char *newlevel = NULL;
 	const char *systype = NULL;
 	RC_STRINGLIST *deporder = NULL;
-	RC_STRINGLIST *tmplist;
+	RC_STRINGLIST *tmplist, *exports = NULL;
 	RC_STRING *service;
 	bool going_down = false;
 	int depoptions = RC_DEP_STRICT | RC_DEP_TRACE;
-	const char *svcdir;
 	char *krunlevel = NULL;
 	const char *workingdir = "/";
 	char *pidstr = NULL;
@@ -793,6 +795,11 @@ int main(int argc, char **argv)
 		case 'n':
 			nostop = true;
 			break;
+		case 'e':
+			if (!exports)
+				exports = rc_stringlist_new();
+			rc_stringlist_add(exports, optarg);
+			break;
 		case 'o':
 			if (*optarg == '\0')
 				optarg = NULL;
@@ -833,14 +840,33 @@ int main(int argc, char **argv)
 	if (chdir(workingdir) == -1)
 		eerror("chdir: %s", strerror(errno));
 
+	/* Create a list of all services which should be started for the new or
+	* current runlevel including those in boot, sysinit and hotplugged
+	* runlevels.  Clearly, some of these will already be started so we
+	* won't actually be starting them all.
+	*/
+	bootlevel = getenv("RC_BOOTLEVEL");
+	runlevel = rc_runlevel_get();
+	newlevel = argv[optind++];
+
+	if (exports) {
+		RC_STRING *name;
+		const char *value;
+		TAILQ_FOREACH(name, exports, entries) {
+			if (!(value = getenv(name->value))) {
+				ewarn("%s: exported environment variable '%s' unset.", applet, name->value);
+				continue;
+			}
+
+			rc_export_variable(newlevel ? newlevel : runlevel, name->value, value);
+		}
+	}
+
 	/* Ensure our environment is pure
 	 * Also, add our configuration to it */
 	env_filter();
 	env_config();
 
-	svcdir = rc_svcdir();
-
-	newlevel = argv[optind++];
 	/* To make life easier, we only have the shutdown runlevel as
 	 * nothing really needs to know that we're rebooting.
 	 * But for those that do, you can test against RC_REBOOT. */
@@ -863,14 +889,6 @@ int main(int argc, char **argv)
 	xasprintf(&pidstr, "%d", getpid());
 	setenv("RC_PID", pidstr, 1);
 	free(pidstr);
-
-	/* Create a list of all services which should be started for the new or
-	* current runlevel including those in boot, sysinit and hotplugged
-	* runlevels.  Clearly, some of these will already be started so we
-	* won't actually be starting them all.
-	*/
-	bootlevel = getenv("RC_BOOTLEVEL");
-	runlevel = rc_runlevel_get();
 
 	rc_logger_open(newlevel ? newlevel : runlevel);
 
