@@ -712,6 +712,7 @@ svc_start_deps(void)
 	/* We use tmplist to hold our scheduled by list */
 	tmplist = rc_stringlist_new();
 	TAILQ_FOREACH(svc, services, entries) {
+		rc_import_variables(svc->value);
 		state = rc_service_state(svc->value);
 		if (state & RC_SERVICE_STARTED)
 			continue;
@@ -837,6 +838,7 @@ static void svc_start_real(void)
 static void
 svc_start(void)
 {
+	rc_import_variables(NULL);
 	if (dry_run)
 		einfon("start:");
 	else
@@ -947,8 +949,10 @@ svc_stop_deps(RC_SERVICE state)
 		return;
 
 	TAILQ_FOREACH(svc, tmplist, entries) {
-		if (rc_service_state(svc->value) & RC_SERVICE_STOPPED)
+		rc_import_variables(svc->value);
+		if (rc_service_state(svc->value) & RC_SERVICE_STOPPED) {
 			continue;
+		}
 		svc_wait(svc->value);
 		if (rc_service_state(svc->value) & RC_SERVICE_STOPPED)
 			continue;
@@ -1019,9 +1023,10 @@ svc_stop_real(void)
 static int
 svc_stop(void)
 {
-	RC_SERVICE state;
+	RC_SERVICE state = 0;
 
-	state = 0;
+	rc_import_variables(NULL);
+
 	if (dry_run)
 		einfon("stop:");
 	else
