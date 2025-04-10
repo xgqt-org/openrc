@@ -556,34 +556,60 @@ enum scriptdirs_entries {
 	SCRIPTDIR_CAP
 };
 
-static const char * const scriptdirs[SCRIPTDIR_CAP] = {
+static struct rc_scriptdir scriptdirs[SCRIPTDIR_CAP] = {
 #ifdef RC_LOCAL_PREFIX
-	RC_LOCAL_PREFIX "/etc",
+	{ -1, RC_LOCAL_PREFIX "/etc" },
 #endif
-	RC_SYSCONFDIR,
+	{ -1, RC_SYSCONFDIR },
 #ifdef RC_PKG_PREFIX
-	RC_PKG_PREFIX "/etc",
+	{ -1, RC_PKG_PREFIX "/etc" },
 #endif
-	RC_SVCDIR
+	{ -1, RC_SVCDIR }
 };
 
 static struct {
-	bool set;
+	bool set, open;
 	char *svcdir;
 	char *usrconfdir;
 	char *runleveldir;
-	const char *scriptdirs[ARRAY_SIZE(scriptdirs)];
+	struct rc_scriptdir scriptdirs[ARRAY_SIZE(scriptdirs)];
 } rc_dirs = {
 	.scriptdirs = {
 #ifdef RC_LOCAL_PREFIX
-		[SCRIPTDIR_LOCAL] = RC_LOCAL_PREFIX "/etc/user",
+		{ -1, RC_LOCAL_PREFIX "/etc" },
 #endif
-		[SCRIPTDIR_SYS] = RC_SYSCONFDIR "/user",
+		{ -1, RC_SYSCONFDIR },
 #ifdef RC_PKG_PREFIX
-		[SCRIPTDIR_PKG] = RC_PKG_PREFIX "/etc/user",
+		{ -1, RC_PKG_PREFIX "/etc" },
 #endif
 	}
 };
+
+static bool is_user = false;
+
+size_t
+rc_scriptdirs(const struct rc_scriptdir **dirs)
+{
+	struct rc_scriptdir *target;
+	size_t len;
+
+	if (is_user) {
+		target = rc_dirs.scriptdirs;
+		len = ARRAY_SIZE(rc_dirs.scriptdirs);
+	} else {
+		target = scriptdirs;
+		len = ARRAY_SIZE(scriptdirs);
+	}
+
+	if (!rc_dirs.open) {
+		for (size_t i = 0; i < len; i++)
+			target[i].dirfd = open(target[i].path, O_RDONLY | O_CLOEXEC | O_DIRECTORY);
+		rc_dirs.open = true;
+	}
+
+	*dirs = target;
+	return len;
+}
 
 static void
 free_rc_dirs(void)
@@ -592,10 +618,9 @@ free_rc_dirs(void)
 	rc_dirs.runleveldir = NULL;
 	free(rc_dirs.svcdir);
 	rc_dirs.svcdir = NULL;
-	rc_dirs.scriptdirs[0] = NULL;
+	rc_dirs.scriptdirs[0].path = NULL;
+	rc_dirs.scriptdirs[ARRAY_SIZE(scriptdirs) - 1].path = NULL;
 }
-
-static bool is_user = false;
 
 bool
 rc_is_user(void)
@@ -634,16 +659,8 @@ rc_set_user(void)
 	xasprintf(&rc_dirs.svcdir, "%s/openrc", env);
 	atexit(free_rc_dirs);
 
-	rc_dirs.scriptdirs[SCRIPTDIR_USR] = rc_dirs.usrconfdir;
-	rc_dirs.scriptdirs[SCRIPTDIR_SVC] = rc_dirs.svcdir;
-}
-
-const char * const *
-rc_scriptdirs(void)
-{
-	if (rc_dirs.set)
-		return rc_dirs.scriptdirs;
-	return scriptdirs;
+	rc_dirs.scriptdirs[SCRIPTDIR_USR].path = rc_dirs.usrconfdir;
+	rc_dirs.scriptdirs[SCRIPTDIR_SVC].path = rc_dirs.svcdir;
 }
 
 const char *
@@ -707,6 +724,8 @@ rc_service_resolve(const char *service)
 {
 	char *buffer;
 	struct stat buf;
+	const struct rc_scriptdir *dirs;
+	size_t dir_count = rc_scriptdirs(&dirs);
 
 	if (!service)
 		return NULL;
@@ -722,9 +741,9 @@ rc_service_resolve(const char *service)
 		if (safe_readlink(rc_dirfd(RC_DIR_INACTIVE), service, &buffer, buf.st_size + 1) >= 0)
 			return buffer;
 
-	for (const char * const *dirs = rc_scriptdirs(); *dirs; dirs++) {
+	for (size_t i = 0; i < dir_count; i++) {
 		char *file = NULL;
-		xasprintf(&file, "%s/init.d/%s", *dirs, service);
+		xasprintf(&file, "%s/init.d/%s", dirs[i].path, service);
 		if (stat(file, &buf) == 0)
 			return file;
 		free(file);
@@ -1078,17 +1097,17 @@ rc_services_in_runlevel(const char *runlevel)
 	RC_STRINGLIST *list = NULL;
 
 	if (!runlevel) {
+		const struct rc_scriptdir *dirs;
+		size_t dircount = rc_scriptdirs(&dirs);
+
 		list = rc_stringlist_new();
-		for (const char * const *dirs = rc_scriptdirs(); *dirs; dirs++) {
-			char *initd;
+		for (size_t i = 0; i < dircount; i++) {
 			RC_STRINGLIST *svcs;
 
-			xasprintf(&initd, "%s/init.d", *dirs);
-			svcs = ls_dir(AT_FDCWD, initd, LS_INITD);
+			svcs = ls_dir(dirs[i].dirfd, "init.d", LS_INITD);
 			TAILQ_CONCAT(list, svcs, entries);
 
 			rc_stringlist_free(svcs);
-			free(initd);
 		}
 		return list;
 	}

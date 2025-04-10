@@ -689,6 +689,8 @@ rc_deptree_update_needed(time_t *newest, char *file)
 	RC_STRING *s;
 	struct stat buf;
 	time_t mtime;
+	const struct rc_scriptdir *dirs;
+	size_t dircount = rc_scriptdirs(&dirs);
 
 	/* Quick test to see if anything we use has changed and we have
 	 * data in our deptree. */
@@ -704,13 +706,9 @@ rc_deptree_update_needed(time_t *newest, char *file)
 		mtime = time(NULL);
 	}
 
-	for (const char * const *dirs = rc_scriptdirs(); *dirs; dirs++) {
-		static const char *subdirs[] = { "init.d", "conf.d", NULL };
-		for (const char **subdir = subdirs; *subdir; subdir++) {
-			xasprintf(&path, "%s/%s", *dirs, *subdir);
-			newer |= !deep_mtime_check(AT_FDCWD, path, true, &mtime, file);
-			free(path);
-		}
+	for (size_t i = 0; i < dircount; i++) {
+		newer |= !deep_mtime_check(dirs[i].dirfd, "init.d", true, &mtime, file);
+		newer |= !deep_mtime_check(dirs[i].dirfd, "conf.d", true, &mtime, file);
 	}
 
 	newer |= !deep_mtime_check(rc_dirfd(RC_DIR_SYSCONF), "rc.conf", true, &mtime, file);
@@ -739,10 +737,12 @@ setup_environment(void)
 	size_t env_size;
 	char *env;
 	FILE *mem = xopen_memstream(&env, &env_size);
+	const struct rc_scriptdir *dirs;
+	size_t dircount = rc_scriptdirs(&dirs);
 
-	for (const char * const *dirs = rc_scriptdirs(); *dirs; dirs++) {
-		fputs(*dirs, mem);
-		if (dirs[1])
+	for (size_t i = 0; i < dircount; i++) {
+		fputs(dirs[i].path, mem);
+		if (i != dircount - 1)
 			fputc(' ', mem);
 	}
 	xclose_memstream(mem);

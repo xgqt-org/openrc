@@ -125,10 +125,15 @@ void rc_set_user(void);
 /*! @return true if rc_set_user was called, false otherwise. */
 bool rc_is_user(void);
 
-/*! Get a list of all script directories containing a
- * init.d and conf.d
- * @return NULL terminated array of directory paths. */
-const char * const *rc_scriptdirs(void);
+struct rc_scriptdir {
+	int dirfd;
+	const char *path;
+};
+
+/*! Get a list of all script directories containing a init.d and conf.d
+ * @param pointer where the scriptdir array will be stored.
+ * @return the lenght of the array */
+size_t rc_scriptdirs(const struct rc_scriptdir **);
 
 /*! The system configuration directory is where rc.conf
  * and other configuration files are stored.
