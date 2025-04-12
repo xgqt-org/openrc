@@ -618,6 +618,7 @@ rc_set_root(const char *root)
 		xasprintf(&rc_dirs.scriptdirs_data[i], "%.*s%s", len, root, scriptdirs[i]);
 		rc_dirs.scriptdirs[i] = rc_dirs.scriptdirs_data[i];
 	}
+	setenv("RC_ROOT", root, true);
 
 	atexit(free_rc_dirs);
 }

@@ -1109,6 +1109,7 @@ int main(int argc, char **argv)
 	char *pidstr = NULL;
 	size_t l = 0, ll;
 	struct stat stbuf;
+	char *root;
 
 	/* Show help if insufficient args */
 	if (argc < 2 || !exists(argv[1])) {
@@ -1126,6 +1127,8 @@ int main(int argc, char **argv)
 
 	if (rc_yesno(getenv("RC_USER_SERVICES")))
 		rc_set_user();
+	else if ((root = getenv("RC_ROOT")))
+		rc_set_root(root);
 
 	if (!(service = (realpath(argv[1], NULL))))
 		eerrorx("readpath: %s", strerror(errno));
