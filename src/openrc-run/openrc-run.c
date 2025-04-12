@@ -63,7 +63,7 @@ static const struct timespec interval = { .tv_nsec = WAIT_INTERVAL };
 
 const char *applet = NULL;
 const char *extraopts = "stop | start | restart | status | describe | zap";
-const char getoptstring[] = "dDsSvl:Z" getoptstring_COMMON;
+const char getoptstring[] = "dDsSvl:Z" getoptstring_DIRS getoptstring_COMMON;
 const struct option longopts[] = {
 	{ "debug",      0, NULL, 'd'},
 	{ "dry-run",    0, NULL, 'Z'},
@@ -71,6 +71,7 @@ const struct option longopts[] = {
 	{ "ifstopped",  0, NULL, 'S'},
 	{ "nodeps",     0, NULL, 'D'},
 	{ "lockfd",     1, NULL, 'l'},
+	longopts_DIRS
 	longopts_COMMON
 };
 const char *const longopts_help[] = {
@@ -80,6 +81,7 @@ const char *const longopts_help[] = {
 	"only run commands when stopped",
 	"ignore dependencies",
 	"fd of the exclusive lock from rc",
+	longopts_help_DIRS
 	longopts_help_COMMON
 };
 const char *usagestring = NULL;
@@ -1167,6 +1169,7 @@ int main(int argc, char **argv)
 		case 'Z':
 			dry_run = true;
 			break;
+		case_RC_DIRS_GETOPT
 		case_RC_COMMON_GETOPT
 		}
 
