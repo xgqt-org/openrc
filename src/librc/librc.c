@@ -566,8 +566,10 @@ static const char * const scriptdirs[SCRIPTDIR_CAP] = {
 static struct {
 	bool set;
 	char *svcdir;
+	char *sysconfdir;
 	char *usrconfdir;
 	char *runleveldir;
+	char *scriptdirs_data[ARRAY_SIZE(scriptdirs)];
 	const char *scriptdirs[ARRAY_SIZE(scriptdirs)];
 } rc_dirs = {
 	.scriptdirs = {
@@ -587,6 +589,9 @@ free_rc_dirs(void)
 	free(rc_dirs.runleveldir);
 	rc_dirs.runleveldir = NULL;
 	free(rc_dirs.svcdir);
+	for (size_t i = 0; i < ARRAY_SIZE(scriptdirs); i++)
+		if (rc_dirs.scriptdirs_data[i])
+			free(rc_dirs.scriptdirs_data[i]);
 	rc_dirs.svcdir = NULL;
 	rc_dirs.scriptdirs[0] = NULL;
 }
@@ -597,6 +602,24 @@ bool
 rc_is_user(void)
 {
 	return is_user;
+}
+
+void
+rc_set_root(const char *root)
+{
+	int len = strlen(root);
+	if (root[len - 1] == '/')
+		len--;
+	rc_dirs.set = true;
+	xasprintf(&rc_dirs.svcdir, "%.*s%s", len, root, RC_SVCDIR);
+	xasprintf(&rc_dirs.runleveldir, "%.*s%s", len, root, RC_RUNLEVELDIR);
+	xasprintf(&rc_dirs.sysconfdir, "%.*s%s", len, root, RC_SYSCONFDIR);
+	for (size_t i = 0; i < ARRAY_SIZE(scriptdirs); i++) {
+		xasprintf(&rc_dirs.scriptdirs_data[i], "%.*s%s", len, root, scriptdirs[i]);
+		rc_dirs.scriptdirs[i] = rc_dirs.scriptdirs_data[i];
+	}
+
+	atexit(free_rc_dirs);
 }
 
 void
@@ -646,6 +669,8 @@ rc_scriptdirs(void)
 const char *
 rc_sysconfdir(void)
 {
+	if (rc_dirs.set)
+		return rc_dirs.sysconfdir;
 	return RC_SYSCONFDIR;
 }
 
